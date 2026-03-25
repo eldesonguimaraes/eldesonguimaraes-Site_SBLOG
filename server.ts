@@ -27,6 +27,11 @@ async function startServer() {
     // Check if SMTP is configured
     const hasSmtpConfig = process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS;
 
+    console.log(`[Contact API] Attempting to send email. SMTP Configured: ${!!hasSmtpConfig}`);
+    if (hasSmtpConfig) {
+      console.log(`[Contact API] Host: ${process.env.SMTP_HOST}, Port: ${process.env.SMTP_PORT}, User: ${process.env.SMTP_USER}`);
+    }
+
     const mailOptions = {
       from: `"${name}" <${process.env.SMTP_USER || "no-reply@sblogbr.com"}>`,
       to: process.env.CONTACT_EMAIL || "contato@sblogbr.com",
@@ -78,9 +83,32 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+      
+      // Verify SMTP on startup
+      if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+        const transporter = nodemailer.createTransport({
+          host: process.env.SMTP_HOST,
+          port: parseInt(process.env.SMTP_PORT || "587"),
+          secure: process.env.SMTP_PORT === "465",
+          auth: {
+            user: process.env.SMTP_USER,
+            pass: process.env.SMTP_PASS,
+          },
+        });
+        
+        transporter.verify((error, success) => {
+          if (error) {
+            console.error("[SMTP] Connection verification failed:", error);
+          } else {
+            console.log("[SMTP] Server is ready to take our messages");
+          }
+        });
+      } else {
+        console.warn("[SMTP] Configuration missing. Emails will be logged to console.");
+      }
+    });
 }
 
 startServer();
