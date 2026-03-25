@@ -1,3 +1,4 @@
+// SMTP Server Entry Point - Updated with logging and verification
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import nodemailer from "nodemailer";
