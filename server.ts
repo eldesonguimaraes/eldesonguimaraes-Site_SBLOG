@@ -1,4 +1,3 @@
-// SMTP Server Entry Point - Updated with logging and verification
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import nodemailer from "nodemailer";
@@ -11,66 +10,64 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-async function startServer() {
-  const app = express();
-  const PORT = 3000;
+const app = express();
+app.use(express.json());
 
-  app.use(express.json());
+// API routes
+app.post("/api/contact", async (req, res) => {
+  const { name, email, subject, message } = req.body;
 
-  // API routes
-  app.post("/api/contact", async (req, res) => {
-    const { name, email, subject, message } = req.body;
+  if (!name || !email || !message) {
+    return res.status(400).json({ error: "Missing required fields" });
+  }
 
-    if (!name || !email || !message) {
-      return res.status(400).json({ error: "Missing required fields" });
-    }
+  // Check if SMTP is configured
+  const hasSmtpConfig = process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS;
 
-    // Check if SMTP is configured
-    const hasSmtpConfig = process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS;
+  console.log(`[Contact API] Attempting to send email. SMTP Configured: ${!!hasSmtpConfig}`);
+  if (hasSmtpConfig) {
+    console.log(`[Contact API] Host: ${process.env.SMTP_HOST}, Port: ${process.env.SMTP_PORT}, User: ${process.env.SMTP_USER}`);
+  }
 
-    console.log(`[Contact API] Attempting to send email. SMTP Configured: ${!!hasSmtpConfig}`);
-    if (hasSmtpConfig) {
-      console.log(`[Contact API] Host: ${process.env.SMTP_HOST}, Port: ${process.env.SMTP_PORT}, User: ${process.env.SMTP_USER}`);
-    }
+  const mailOptions = {
+    from: `"${name}" <${process.env.SMTP_USER || "no-reply@sblogbr.com"}>`,
+    to: process.env.CONTACT_EMAIL || "contato@sblogbr.com",
+    replyTo: email,
+    subject: `[SB LOG] ${subject || "Novo Contato"}`,
+    text: `Nome: ${name}\nE-mail: ${email}\nAssunto: ${subject}\n\nMensagem:\n${message}`,
+  };
 
-    const mailOptions = {
-      from: `"${name}" <${process.env.SMTP_USER || "no-reply@sblogbr.com"}>`,
-      to: process.env.CONTACT_EMAIL || "contato@sblogbr.com",
-      replyTo: email,
-      subject: `[SB LOG] ${subject || "Novo Contato"}`,
-      text: `Nome: ${name}\nE-mail: ${email}\nAssunto: ${subject}\n\nMensagem:\n${message}`,
-    };
+  if (!hasSmtpConfig) {
+    console.warn("SMTP configuration missing. Logging email to console.");
+    console.log("--- EMAIL CONTENT ---");
+    console.log(mailOptions);
+    console.log("----------------------");
+    // Simulate success for demo purposes if not configured
+    return res.json({ success: true, message: "Email logged to console (SMTP not configured)" });
+  }
 
-    if (!hasSmtpConfig) {
-      console.warn("SMTP configuration missing. Logging email to console.");
-      console.log("--- EMAIL CONTENT ---");
-      console.log(mailOptions);
-      console.log("----------------------");
-      // Simulate success for demo purposes if not configured
-      return res.json({ success: true, message: "Email logged to console (SMTP not configured)" });
-    }
-
-    const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: parseInt(process.env.SMTP_PORT || "587"),
-      secure: process.env.SMTP_PORT === "465",
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-    });
-
-    try {
-      await transporter.sendMail(mailOptions);
-      res.json({ success: true });
-    } catch (error) {
-      console.error("Error sending email:", error);
-      res.status(500).json({ error: "Failed to send email" });
-    }
+  const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: parseInt(process.env.SMTP_PORT || "587"),
+    secure: process.env.SMTP_PORT === "465",
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+    },
   });
 
-  // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
+  try {
+    await transporter.sendMail(mailOptions);
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Error sending email:", error);
+    res.status(500).json({ error: "Failed to send email" });
+  }
+});
+
+// Setup for development or production
+async function setupApp() {
+  if (process.env.NODE_ENV !== "production" && process.env.VERCEL !== "1") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
@@ -84,6 +81,9 @@ async function startServer() {
     });
   }
 
+  // Only listen if not on Vercel
+  if (process.env.VERCEL !== "1") {
+    const PORT = 3000;
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`Server running on http://localhost:${PORT}`);
       
@@ -106,10 +106,11 @@ async function startServer() {
             console.log("[SMTP] Server is ready to take our messages");
           }
         });
-      } else {
-        console.warn("[SMTP] Configuration missing. Emails will be logged to console.");
       }
     });
+  }
 }
 
-startServer();
+setupApp();
+
+export default app;
